@@ -1,13 +1,14 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 )
 
-// Task ...
 type Task struct {
 	ID           string   `json:"id"`
 	Description  string   `json:"description"`
@@ -39,14 +40,95 @@ var tasks = map[string]Task{
 	},
 }
 
-// Ниже напишите обработчики для каждого эндпоинта
-// ...
+// В общем и целом, важный комментарий об устройстве обработчиков
+// Выяснилось, что под капотом обработчик всегда возвращает код 200
+// И если попытаться в конце обработчика назначить еще раз код ответа 200
+// В логгах отмечается как избыточное действие.
+// В связи с этим, было приянто решение использовать функцию WriteHeader
+// Лишь в одном обработчике, который возвращает код 201.
+
+// GetTasksHandler -  Обработчик, возрвращает все задачи в виде json файла
+// через GET запрос к серверу, в случае ошибки возвращает код 500, в случае успеха - 200
+func GetTasksHandler(res http.ResponseWriter, req *http.Request) {
+	jsonSlice, err := json.Marshal(tasks)
+	if err != nil {
+		http.Error(res, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	res.Header().Set("Content-Type", "application/json")
+	_, err = res.Write(jsonSlice)
+	if err != nil {
+		http.Error(res, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+}
+
+// AddNewTask - Обработчик, обрабатывает POST запрос к северу, добавляет новую задачу в мапу
+// в случае успеха возвращает статус 201, в случае ошибки - 400
+func AddNewTask(res http.ResponseWriter, req *http.Request) {
+	var newTask Task
+	var buf bytes.Buffer
+
+	_, err := buf.ReadFrom(req.Body)
+	if err != nil {
+		http.Error(res, err.Error(), http.StatusBadRequest)
+		return
+	}
+	err = json.Unmarshal(buf.Bytes(), &newTask)
+	if err != nil {
+		http.Error(res, err.Error(), http.StatusBadRequest)
+	}
+	tasks[newTask.ID] = newTask
+	res.Header().Set("Content-Type", "application/json")
+	res.WriteHeader(http.StatusCreated)
+
+}
+
+// GetTaskId - Обработчик запросов типа GET c паттерном /{id}
+// Возвращает json объект с соотвесвующим id и кодом 200, в случае ошибки - код 400
+// Паттерн запроса /{id}, вместо id - число
+func GetTaskId(res http.ResponseWriter, req *http.Request) {
+	id := chi.URLParam(req, "id")
+	if _, ok := tasks[id]; ok == false {
+		http.Error(res, "задача с данным ID не найдена", http.StatusBadRequest)
+		return
+	}
+
+	jsonSlice, err := json.Marshal(tasks[id])
+	if err != nil {
+		http.Error(res, err.Error(), http.StatusBadRequest)
+	}
+
+	res.Header().Set("Content-Type", "application/json")
+	_, err = res.Write(jsonSlice)
+	if err != nil {
+		http.Error(res, err.Error(), http.StatusBadRequest)
+	}
+}
+
+// DeleteTaskID - Обработчик запросов типа DELETE c паттерном /{id}
+// Удаляет из мапы запись с соответствующим id и
+// Отвечает кодом 200 в случае успеха, в случае ошибки - код 400.
+// Паттерн запроса /{id}, вместо id - число
+func DeleteTaskID(res http.ResponseWriter, req *http.Request) {
+	id := chi.URLParam(req, "id")
+	if _, ok := tasks[id]; ok == false {
+		http.Error(res, "задача с данным ID не найдена", http.StatusBadRequest) //?
+		return
+	}
+	delete(tasks, id)
+	res.Header().Set("Content-Type", "application/json")
+}
 
 func main() {
 	r := chi.NewRouter()
 
-	// здесь регистрируйте ваши обработчики
-	// ...
+	r.Get("/tasks", GetTasksHandler)
+	r.Post("/tasks", AddNewTask)
+
+	r.Get("/tasks/{id}", GetTaskId)
+	r.Delete("/tasks/{id}", DeleteTaskID)
 
 	if err := http.ListenAndServe(":8080", r); err != nil {
 		fmt.Printf("Ошибка при запуске сервера: %s", err.Error())
