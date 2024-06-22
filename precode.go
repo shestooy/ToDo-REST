@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -47,9 +48,9 @@ var tasks = map[string]Task{
 // В связи с этим, было приянто решение использовать функцию WriteHeader
 // Лишь в одном обработчике, который возвращает код 201.
 
-// GetTasksHandler -  Обработчик, возрвращает все задачи в виде json файла
+// GetTasks -  Обработчик, возрвращает все задачи в виде json файла
 // через GET запрос к серверу, в случае ошибки возвращает код 500, в случае успеха - 200
-func GetTasksHandler(res http.ResponseWriter, req *http.Request) {
+func GetTasks(res http.ResponseWriter, req *http.Request) {
 	jsonSlice, err := json.Marshal(tasks)
 	if err != nil {
 		http.Error(res, err.Error(), http.StatusInternalServerError)
@@ -58,15 +59,15 @@ func GetTasksHandler(res http.ResponseWriter, req *http.Request) {
 	res.Header().Set("Content-Type", "application/json")
 	_, err = res.Write(jsonSlice)
 	if err != nil {
-		http.Error(res, err.Error(), http.StatusInternalServerError)
+		log.Fatal(err)
 		return
 	}
 
 }
 
-// AddNewTask - Обработчик, обрабатывает POST запрос к северу, добавляет новую задачу в мапу
+// PostTask - Обработчик, обрабатывает POST запрос к северу, добавляет новую задачу в мапу
 // в случае успеха возвращает статус 201, в случае ошибки - 400
-func AddNewTask(res http.ResponseWriter, req *http.Request) {
+func PostTask(res http.ResponseWriter, req *http.Request) {
 	var newTask Task
 	var buf bytes.Buffer
 
@@ -79,6 +80,10 @@ func AddNewTask(res http.ResponseWriter, req *http.Request) {
 	if err != nil {
 		http.Error(res, err.Error(), http.StatusBadRequest)
 	}
+	if _, ok := tasks[newTask.ID]; ok {
+		http.Error(res, "запись с таким id уже есть", http.StatusBadRequest)
+		return
+	}
 	tasks[newTask.ID] = newTask
 	res.Header().Set("Content-Type", "application/json")
 	res.WriteHeader(http.StatusCreated)
@@ -90,7 +95,7 @@ func AddNewTask(res http.ResponseWriter, req *http.Request) {
 // Паттерн запроса /{id}, вместо id - число
 func GetTaskId(res http.ResponseWriter, req *http.Request) {
 	id := chi.URLParam(req, "id")
-	if _, ok := tasks[id]; ok == false {
+	if _, ok := tasks[id]; !ok {
 		http.Error(res, "задача с данным ID не найдена", http.StatusBadRequest)
 		return
 	}
@@ -103,7 +108,8 @@ func GetTaskId(res http.ResponseWriter, req *http.Request) {
 	res.Header().Set("Content-Type", "application/json")
 	_, err = res.Write(jsonSlice)
 	if err != nil {
-		http.Error(res, err.Error(), http.StatusBadRequest)
+		log.Fatal(err.Error())
+		return
 	}
 }
 
@@ -113,19 +119,18 @@ func GetTaskId(res http.ResponseWriter, req *http.Request) {
 // Паттерн запроса /{id}, вместо id - число
 func DeleteTaskID(res http.ResponseWriter, req *http.Request) {
 	id := chi.URLParam(req, "id")
-	if _, ok := tasks[id]; ok == false {
-		http.Error(res, "задача с данным ID не найдена", http.StatusBadRequest) //?
+	if _, ok := tasks[id]; !ok {
+		http.Error(res, "задача с данным ID не найдена", http.StatusBadRequest)
 		return
 	}
 	delete(tasks, id)
-	res.Header().Set("Content-Type", "application/json")
 }
 
 func main() {
 	r := chi.NewRouter()
 
-	r.Get("/tasks", GetTasksHandler)
-	r.Post("/tasks", AddNewTask)
+	r.Get("/tasks", GetTasks)
+	r.Post("/tasks", PostTask)
 
 	r.Get("/tasks/{id}", GetTaskId)
 	r.Delete("/tasks/{id}", DeleteTaskID)
