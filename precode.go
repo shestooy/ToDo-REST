@@ -108,7 +108,7 @@ func GetTaskId(res http.ResponseWriter, req *http.Request) {
 	res.Header().Set("Content-Type", "application/json")
 	_, err = res.Write(jsonSlice)
 	if err != nil {
-		log.Fatal(err.Error())
+		log.Println(err.Error())
 		return
 	}
 }
